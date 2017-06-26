@@ -7,7 +7,7 @@ services:
             - "/var/run/docker.sock:/var/run/docker.sock"
         ports:
             - 8080:8080
-        image: functions/gateway:0.5.6
+        image: functions/gateway:0.5.7
         networks:
             - functions
         environment:
@@ -17,7 +17,7 @@ services:
                 constraints: [node.role == manager]
  
     prometheus:
-        image: alexellis2/prometheus-next:latest 
+        image: functions/prometheus:latest 
         command: "-config.file=/etc/prometheus/prometheus.yml -storage.local.path=/prometheus -storage.local.memory-chunks=10000 --alertmanager.url=http://alertmanager:9093"
         ports:
             - 9090:9090
@@ -33,7 +33,7 @@ services:
                 constraints: [node.role == manager]
 
     alertmanager:
-        image: alexellis2/alertmanager-next:latest 
+        image: functions/alertmanager:latest 
         environment:
             no_proxy: "gateway"
         command:
