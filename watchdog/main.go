@@ -23,7 +23,10 @@ func buildFunctionInput(config *WatchdogConfig, r *http.Request) ([]byte, error)
 	var requestBytes []byte
 	var err error
 
-	defer r.Body.Close()
+	if r.Body != nil {
+		defer r.Body.Close()
+	}
+
 	requestBytes, _ = ioutil.ReadAll(r.Body)
 	if config.marshalRequest {
 		marshalRes, marshalErr := types.MarshalRequest(requestBytes, &r.Header)
@@ -41,7 +44,7 @@ func debugHeaders(source *http.Header, direction string) {
 	}
 }
 
-func pipeRequest(config *WatchdogConfig, w http.ResponseWriter, r *http.Request) {
+func pipeRequest(config *WatchdogConfig, w http.ResponseWriter, r *http.Request, method string, hasBody bool) {
 	startTime := time.Now()
 
 	parts := strings.Split(config.faasProcess, " ")
@@ -52,37 +55,46 @@ func pipeRequest(config *WatchdogConfig, w http.ResponseWriter, r *http.Request)
 
 	targetCmd := exec.Command(parts[0], parts[1:]...)
 
-	if config.cgiHeaders {
-		envs := os.Environ()
-		for k, v := range r.Header {
-			kv := fmt.Sprintf("Http_%s=%s", k, v[0])
-			envs = append(envs, kv)
-		}
+	envs := getAdditionalEnvs(config, r, method)
+	if len(envs) > 0 {
 		targetCmd.Env = envs
+
 	}
 
 	writer, _ := targetCmd.StdinPipe()
 
 	var out []byte
 	var err error
-	var res []byte
+	var requestBody []byte
 
 	var wg sync.WaitGroup
-	wg.Add(2)
 
-	res, buildInputErr := buildFunctionInput(config, r)
-	if buildInputErr != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(buildInputErr.Error()))
-		return
+	wgCount := 2
+	if hasBody == false {
+		wgCount = 1
 	}
 
-	// Write to pipe in separate go-routine to prevent blocking
-	go func() {
-		defer wg.Done()
-		writer.Write(res)
-		writer.Close()
-	}()
+	if hasBody {
+		var buildInputErr error
+		requestBody, buildInputErr = buildFunctionInput(config, r)
+		if buildInputErr != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(buildInputErr.Error()))
+			return
+		}
+	}
+
+	wg.Add(wgCount)
+
+	// Only write body if this is appropriate for the method.
+	if hasBody {
+		// Write to pipe in separate go-routine to prevent blocking
+		go func() {
+			defer wg.Done()
+			writer.Write(requestBody)
+			writer.Close()
+		}()
+	}
 
 	go func() {
 		defer wg.Done()
@@ -95,7 +107,7 @@ func pipeRequest(config *WatchdogConfig, w http.ResponseWriter, r *http.Request)
 		if config.writeDebug == true {
 			log.Println(targetCmd, err)
 		}
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		response := bytes.NewBufferString(err.Error())
 		w.Write(response.Bytes())
 		return
@@ -127,12 +139,42 @@ func pipeRequest(config *WatchdogConfig, w http.ResponseWriter, r *http.Request)
 	}
 }
 
+func getAdditionalEnvs(config *WatchdogConfig, r *http.Request, method string) []string {
+	var envs []string
+
+	if config.cgiHeaders {
+		envs = os.Environ()
+		for k, v := range r.Header {
+			kv := fmt.Sprintf("Http_%s=%s", k, v[0])
+			envs = append(envs, kv)
+		}
+		envs = append(envs, fmt.Sprintf("Http_Method=%s", method))
+
+		if len(r.URL.RawQuery) > 0 {
+			envs = append(envs, fmt.Sprintf("Http_Query=%s", r.URL.RawQuery))
+		}
+	}
+
+	return envs
+}
+
 func makeRequestHandler(config *WatchdogConfig) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
-			pipeRequest(config, w, r)
-		} else {
+		switch r.Method {
+		case
+			"POST",
+			"PUT",
+			"DELETE",
+			"UPDATE":
+			pipeRequest(config, w, r, r.Method, true)
+			break
+		case
+			"GET":
+			pipeRequest(config, w, r, r.Method, false)
+			break
+		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
+
 		}
 	}
 }
@@ -154,7 +196,7 @@ func main() {
 		Addr:           ":8080",
 		ReadTimeout:    readTimeout,
 		WriteTimeout:   writeTimeout,
-		MaxHeaderBytes: 1 << 20,
+		MaxHeaderBytes: 1 << 20, // Max header of 1MB
 	}
 
 	http.HandleFunc("/", makeRequestHandler(&config))
@@ -164,9 +206,8 @@ func main() {
 		log.Printf("Writing lock-file to: %s\n", path)
 		writeErr := ioutil.WriteFile(path, []byte{}, 0660)
 		if writeErr != nil {
-			log.Panicf("Cannot write %s. Error: %s\n", path, writeErr.Error())
+			log.Panicf("Cannot write %s. To disable lock-file set env suppress_lock=true.\n Error: %s.\n", path, writeErr.Error())
 		}
 	}
-
 	log.Fatal(s.ListenAndServe())
 }

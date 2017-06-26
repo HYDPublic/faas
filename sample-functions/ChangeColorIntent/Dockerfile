@@ -1,6 +1,8 @@
 FROM alpine:latest
 RUN apk --update add nodejs
 
+ENV NPM_CONFIG_LOGLEVEL warn
+
 ADD https://github.com/alexellis/faas/releases/download/v0.5-alpha/fwatchdog /usr/bin
 #COPY ./fwatchdog /usr/bin/
 RUN chmod +x /usr/bin/fwatchdog

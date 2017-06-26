@@ -84,6 +84,7 @@ func MakeFunctionReader(metricsOptions metrics.MetricOptions, c *client.Client) 
 	}
 }
 
+// MakeDeleteFunctionHandler creates a HttpHandler for deleting functions
 func MakeDeleteFunctionHandler(metricsOptions metrics.MetricOptions, c *client.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -208,7 +209,6 @@ func makeSpec(request *requests.CreateFunctionRequest) swarm.ServiceSpec {
 		},
 	}
 
-	// TODO: request.EnvProcess should only be set if it's not nil, otherwise we override anything in the Docker image already
 	var env []string
 	if len(request.EnvProcess) > 0 {
 		env = append(env, fmt.Sprintf("fprocess=%s", request.EnvProcess))
@@ -224,6 +224,8 @@ func makeSpec(request *requests.CreateFunctionRequest) swarm.ServiceSpec {
 	return spec
 }
 
+// BuildEncodedAuthConfig builds Docker registry-formatted string for authentication
+// in base64
 func BuildEncodedAuthConfig(basicAuthB64 string, dockerImage string) (string, error) {
 	// extract registry server address
 	distributionRef, err := reference.ParseNormalizedNamed(dockerImage)

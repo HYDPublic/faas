@@ -63,7 +63,14 @@ func MakeProxy(metrics metrics.MetricOptions, wildcard bool, client *client.Clie
 			}
 
 			if len(serviceName) > 0 {
-				lookupInvoke(w, r, metrics, serviceName, client, logger, &proxyClient)
+				exists, err := lookup(w, r, metrics, serviceName, client, logger, &proxyClient)
+
+				if err == nil && exists {
+					defer trackTime(time.Now(), metrics, serviceName)
+					requestBody, _ := ioutil.ReadAll(r.Body)
+					invokeService(w, r, metrics, serviceName, requestBody, logger, &proxyClient)
+				}
+
 			} else {
 				w.WriteHeader(http.StatusBadRequest)
 				w.Write([]byte("Provide an x-function header or valid route /function/function_name."))
@@ -88,7 +95,7 @@ func trackTime(then time.Time, metrics metrics.MetricOptions, name string) {
 	metrics.GatewayFunctionsHistogram.WithLabelValues(name).Observe(since.Seconds())
 }
 
-func lookupInvoke(w http.ResponseWriter, r *http.Request, metrics metrics.MetricOptions, name string, c *client.Client, logger *logrus.Logger, proxyClient *http.Client) {
+func lookup(w http.ResponseWriter, r *http.Request, metrics metrics.MetricOptions, name string, c *client.Client, logger *logrus.Logger, proxyClient *http.Client) (bool, error) {
 	exists, err := lookupSwarmService(name, c)
 
 	if err != nil || exists == false {
@@ -101,11 +108,7 @@ func lookupInvoke(w http.ResponseWriter, r *http.Request, metrics metrics.Metric
 		w.Write([]byte(fmt.Sprintf("Cannot find service: %s.", name)))
 	}
 
-	if exists {
-		defer trackTime(time.Now(), metrics, name)
-		requestBody, _ := ioutil.ReadAll(r.Body)
-		invokeService(w, r, metrics, name, requestBody, logger, proxyClient)
-	}
+	return exists, err
 }
 
 func lookupSwarmService(serviceName string, c *client.Client) (bool, error) {

@@ -30,6 +30,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Error with Docker server.\n", err)
 	}
+
 	log.Printf("API version: %s, %s\n", dockerVersion.APIVersion, dockerVersion.Version)
 
 	metricsOptions := metrics.BuildMetricsOptions()

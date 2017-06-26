@@ -7,4 +7,3 @@ before_install:
 
 script:
     - sh build.sh
-

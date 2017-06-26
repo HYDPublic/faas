@@ -54,7 +54,7 @@ A number of environmental overrides can be added for additional flexibility and 
 | Option                 | Usage             |
 |------------------------|--------------|
 | `fprocess`             | The process to invoke for each function call. This must be a UNIX binary and accept input via STDIN and output via STDOUT.  |
-| `cgi_headers`          | HTTP headers from request are made available through environmental variables - `Http_X-Served-By` etc. |
+| `cgi_headers`          | HTTP headers from request are made available through environmental variables - `Http_X-Served-By` etc. See section: *Handling headers* for more detail |
 | `marshal_requests`     | Instead of re-directing the raw HTTP body into your fprocess, it will first be marshalled into JSON. Use this if you need to work with HTTP headers and do not want to use environmental variables via the `cgi_headers` flag. |
 | `content_type`         | Force a specific Content-Type response for all responses.    |
 | `write_timeout`        | HTTP timeout for writing a response body from your function  |
@@ -63,6 +63,56 @@ A number of environmental overrides can be added for additional flexibility and 
  
 
 ## Advanced / tuning
+
+**Handling headers**
+
+You can get hold of the HTTP headers by enabling the `cgi_headers` environmental variable.
+
+Here's an example of a POST request with an additional header and a query-string.
+
+```
+$ cgi_headers=true fprocess=env ./watchdog &
+2017/06/23 17:02:58 Writing lock-file to: /tmp/.lock
+
+$ curl "localhost:8080?q=serverless&page=1" -X POST -H X-Forwarded-By:http://my.vpn.com
+```
+
+This is what you'd see if you had set your `fprocess` to `env` on a Linux system:
+
+```
+Http_User-Agent=curl/7.43.0
+Http_Accept=*/*
+Http_X-Forwarded-By=http://my.vpn.com
+Http_Method=POST
+Http_Query=q=serverless&page=1
+```
+
+You can also use the `GET` verb:
+
+```
+$ curl "localhost:8080?action=quote&qty=1&productId=105"
+```
+
+The output from the watchdog would be:
+
+```
+Http_User-Agent=curl/7.43.0
+Http_Accept=*/*
+Http_Method=GET
+Http_Query=action=quote&qty=1&productId=105
+```
+
+You can now use HTTP state from within your application to make decisions.
+
+**HTTP methods**
+
+The HTTP methods supported for the watchdog are:
+
+With a body:
+* POST, PUT, DELETE, UPDATE
+
+Without a body:
+* GET
 
 **Content-Type of request/response**
 

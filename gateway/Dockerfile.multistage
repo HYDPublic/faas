@@ -9,7 +9,8 @@ COPY requests	requests
 COPY tests      tests
 COPY server.go  .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o gateway .
+RUN go test -v ./tests \
+ && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o gateway .
 
 FROM alpine:latest
 WORKDIR /root/

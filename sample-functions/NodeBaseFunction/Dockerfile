@@ -3,6 +3,8 @@ FROM node:6.9.1-alpine
 ADD https://github.com/alexellis/faas/releases/download/0.5.1-alpha/fwatchdog /usr/bin
 RUN chmod +x /usr/bin/fwatchdog
 
+ENV NPM_CONFIG_LOGLEVEL warn
+
 WORKDIR /root/
 
 COPY package.json .
